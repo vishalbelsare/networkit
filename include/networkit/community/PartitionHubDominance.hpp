@@ -1,10 +1,7 @@
-// no-networkit-format
 #ifndef NETWORKIT_COMMUNITY_PARTITION_HUB_DOMINANCE_HPP_
 #define NETWORKIT_COMMUNITY_PARTITION_HUB_DOMINANCE_HPP_
 
 #include <networkit/community/LocalPartitionEvaluation.hpp>
-
-#include <tlx/define/deprecated.hpp>
 
 namespace NetworKit {
 
@@ -33,13 +30,8 @@ public:
      * @return false - small values are not better, large values indicate better cluster cohesion.
      */
     bool isSmallBetter() const override { return false; }
-
-    /**
-     * @return false - this implementation is not paralle.
-     */
-    bool TLX_DEPRECATED(isParallel() const override) { return false; }
 };
 
-}
+} // namespace NetworKit
 
 #endif // NETWORKIT_COMMUNITY_PARTITION_HUB_DOMINANCE_HPP_

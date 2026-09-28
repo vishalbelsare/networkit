@@ -1,4 +1,3 @@
-// no-networkit-format
 /*
  * RandomNodeEdgeScore.cpp
  *
@@ -12,8 +11,8 @@
 
 namespace NetworKit {
 
-RandomNodeEdgeScore::RandomNodeEdgeScore(const Graph& G, double rneRatio) : EdgeScore<double>(G), rneRatio(rneRatio) {
-}
+RandomNodeEdgeScore::RandomNodeEdgeScore(const Graph &G, double rneRatio)
+    : EdgeScore<double>(G), rneRatio(rneRatio) {}
 
 void RandomNodeEdgeScore::run() {
     if (!G->hasEdgeIds()) {
@@ -23,7 +22,7 @@ void RandomNodeEdgeScore::run() {
     Graph sparseGraph = *G;
     std::vector<double> workScores(G->upperEdgeIdBound(), 0);
     count numRemoved = 0;
-    std::vector< std::pair<node, node> > uniformlyRandomEdges;
+    std::vector<std::pair<node, node>> uniformlyRandomEdges;
 
     while (sparseGraph.numberOfEdges() > 0) {
         if (Aux::Random::real() >= rneRatio) { // uniformly random
@@ -31,7 +30,8 @@ void RandomNodeEdgeScore::run() {
 
             while (!edgeFound) {
                 if (uniformlyRandomEdges.empty()) {
-                    uniformlyRandomEdges = GraphTools::randomEdges(sparseGraph, sparseGraph.numberOfEdges() * (1.0 - rneRatio) + 20);
+                    uniformlyRandomEdges = GraphTools::randomEdges(
+                        sparseGraph, sparseGraph.numberOfEdges() * (1.0 - rneRatio) + 20);
                 }
 
                 auto edge = uniformlyRandomEdges.back();
@@ -63,14 +63,6 @@ void RandomNodeEdgeScore::run() {
 
     scoreData = std::move(workScores);
     hasRun = true;
-}
-
-double RandomNodeEdgeScore::score(node, node) {
-    throw std::runtime_error("Not implemented: Use scores() instead.");
-}
-
-double RandomNodeEdgeScore::score(edgeid) {
-    throw std::runtime_error("Not implemented: Use scores() instead.");
 }
 
 } /* namespace NetworKit */

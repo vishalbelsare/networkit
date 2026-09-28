@@ -18,10 +18,10 @@ def run_notebook(path):
     proc = ExecutePreprocessor(timeout=600, kernel_name='python3')
     proc.allow_errors = True
 
-    # For Python >= 3.8 on Windows, the Preprocessor throws a NotImplementedError
+    # On Windows, the Preprocessor throws a NotImplementedError
     # This check is inserted as a workaround
     # See: https://github.com/jupyter/nbconvert/issues/1372
-    if sys.version_info[0] == 3 and sys.version_info[1] >= 8 and sys.platform.startswith('win'):
+    if sys.platform.startswith('win'):
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     proc.preprocess(nb, {'metadata': {'path': dirname}})
@@ -36,6 +36,7 @@ def run_notebook(path):
         return 0
     else:
         print(" " + path + " test exited with errors.")
+        print(errors)
         return 1
 
 if __name__ == '__main__':

@@ -1,4 +1,3 @@
-// no-networkit-format
 /*
  * JaccardDistance.cpp
  *
@@ -6,14 +5,12 @@
  *      Author: Michael Hamann, Gerd Lindner
  */
 
-#include <networkit/auxiliary/Log.hpp>
-#include <networkit/auxiliary/Random.hpp>
 #include <networkit/distance/JaccardDistance.hpp>
 
 namespace NetworKit {
 
-JaccardDistance::JaccardDistance(const Graph& G, const std::vector<count>& triangles) : NodeDistance(G), triangles(triangles) {
-}
+JaccardDistance::JaccardDistance(const Graph &G, const std::vector<count> &triangles)
+    : NodeDistance(G), triangles(triangles) {}
 
 void JaccardDistance::preprocess() {
     if (!G->hasEdgeIds()) {
@@ -32,7 +29,7 @@ double JaccardDistance::distance(node u, node v) {
     return getJaccardDistance(G->degree(u), G->degree(v), triangles[eid]);
 }
 
-std::vector<double> JaccardDistance::getEdgeScores() {
+const std::vector<double> &JaccardDistance::getEdgeScores() const {
     return jDistance;
 }
 

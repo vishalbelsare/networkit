@@ -14,6 +14,7 @@
 #include <networkit/Globals.hpp>
 #include <networkit/algebraic/AlgebraicGlobals.hpp>
 #include <networkit/algebraic/Vector.hpp>
+#include <networkit/graph/Graph.hpp>
 
 namespace NetworKit {
 
@@ -94,6 +95,47 @@ public:
     DenseMatrix &operator=(const DenseMatrix &other) = default;
 
     /**
+     * Compares this matrix to @a other and returns true if the shapes and entries are the same,
+     * otherwise returns false.
+     * @param other
+     */
+    bool operator==(const DenseMatrix &other) const {
+        bool equal =
+            nRows == other.nRows && nCols == other.nCols && entries.size() == other.entries.size();
+        if (equal) {
+            forElementsInRowOrder([&](index i, index j, double value) {
+                if (other(i, j) != value) {
+                    equal = false;
+                    return;
+                }
+            });
+        }
+        return equal;
+    }
+
+    /**
+     * Compares this matrix to @a other and returns true if the shape and zero
+     * element are the same as well as
+     * all entries are the same (within the absolute error range of @a eps), otherwise returns
+     * false.
+     * @param other
+     * @param eps
+     */
+    bool isApprox(const DenseMatrix &other, const double eps = 0.01) const {
+        bool equal =
+            nRows == other.nRows && nCols == other.nCols && entries.size() == other.entries.size();
+        if (equal) {
+            forElementsInRowOrder([&](index i, index j, double value) {
+                if (std::abs(other(i, j) - value) > eps) {
+                    equal = false;
+                    return;
+                }
+            });
+        }
+        return equal;
+    }
+
+    /**
      * @return Number of rows.
      */
     inline count numberOfRows() const { return nRows; }
@@ -125,6 +167,11 @@ public:
      * @return Value at matrix position (i,j).
      */
     double operator()(index i, index j) const;
+
+    /**
+     * Set the matrix at position (@a i, @a j) to @a value.
+     */
+    double &operator()(index i, index j);
 
     /**
      * Set the matrix at position (@a i, @a j) to @a value.
@@ -247,6 +294,32 @@ public:
     void apply(F unaryElementFunction);
 
     /**
+     * Returns the (weighted) adjacency matrix of the (weighted) Graph @a graph.
+     * @param graph
+     */
+    static DenseMatrix adjacencyMatrix(const Graph &graph, double zero = 0.0);
+
+    /**
+     * Creates a diagonal matrix with dimension equal to the dimension of the Vector @a
+     * diagonalElements. The values on the diagonal are the ones stored in @a diagonalElements (i.e.
+     * D(i,i) = diagonalElements[i]).
+     * @param diagonalElements
+     */
+    static DenseMatrix diagonalMatrix(const Vector &diagonalElements, double zero = 0.0);
+
+    /**
+     * Returns the (weighted) incidence matrix of the (weighted) Graph @a graph.
+     * @param graph
+     */
+    static DenseMatrix incidenceMatrix(const Graph &graph, double zero = 0.0);
+
+    /**
+     * Returns the (weighted) Laplacian matrix of the (weighteD) Graph @a graph.
+     * @param graph
+     */
+    static DenseMatrix laplacianMatrix(const Graph &graph, double zero = 0.0);
+
+    /**
      * Decomposes the given @a matrix into lower L and upper U matrix (in-place).
      * @param matrix The matrix to decompose into LU.
      */
@@ -273,28 +346,28 @@ public:
     static DenseMatrix binaryOperator(const DenseMatrix &A, const DenseMatrix &B, L binaryOp);
 
     /**
-     * Iterate over all non-zero elements of row @a row in the matrix and call handler(index column,
+     * Iterate over all elements of row @a row in the matrix and call handler(index column,
      * double value)
      */
     template <typename L>
     void forElementsInRow(index row, L handle) const;
 
     /**
-     * Iterate in parallel over all non-zero elements of row @a row in the matrix and call
+     * Iterate in parallel over all elements of row @a row in the matrix and call
      * handler(index column, double value)
      */
     template <typename L>
     void parallelForElementsInRow(index row, L handle) const;
 
     /**
-     * Iterate over all non-zero elements of the matrix in row order and call handler (lambda
+     * Iterate over all elements of the matrix in row order and call handler (lambda
      * closure).
      */
     template <typename L>
     void forElementsInRowOrder(L handle) const;
 
     /**
-     * Iterate in parallel over all rows and call handler (lambda closure) on non-zero elements of
+     * Iterate in parallel over all rows and call handler (lambda closure) on elements of
      * the matrix.
      */
     template <typename L>
@@ -442,6 +515,20 @@ inline void DenseMatrix::parallelForNonZeroElementsInRowOrder(L handle) const {
             }
         }
     }
+}
+
+// print functions for test debugging / output
+inline std::ostream &operator<<(std::ostream &os, const DenseMatrix &M) {
+    for (index row = 0; row < M.numberOfRows(); ++row) {
+        if (row != 0)
+            os << std::endl;
+        for (index col = 0; col < M.numberOfColumns(); ++col) {
+            if (col != 0)
+                os << ", ";
+            os << M(row, col);
+        }
+    }
+    return os;
 }
 
 } /* namespace NetworKit */

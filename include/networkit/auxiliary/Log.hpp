@@ -3,10 +3,9 @@
 
 #include <sstream>
 #include <string>
+#include <string_view>
 
 #include <networkit/auxiliary/StringBuilder.hpp>
-
-#include <tlx/define/deprecated.hpp>
 
 #ifdef _MSC_VER
 #define NETWORKT_PRETTY_FUNCTION __FUNCSIG__
@@ -17,18 +16,18 @@
 /// Logging without format string
 #define LOG_AT(level, ...) \
     ::Aux::Log::log({__FILE__, NETWORKT_PRETTY_FUNCTION, __LINE__}, level, __VA_ARGS__)
-#define FATAL(...) LOG_AT(::Aux::Log::LogLevel::fatal, __VA_ARGS__)
-#define ERROR(...) LOG_AT(::Aux::Log::LogLevel::error, __VA_ARGS__)
-#define WARN(...) LOG_AT(::Aux::Log::LogLevel::warn, __VA_ARGS__)
-#define INFO(...) LOG_AT(::Aux::Log::LogLevel::info, __VA_ARGS__)
+#define FATAL(...) LOG_AT(::Aux::Log::LogLevel::FATAL, __VA_ARGS__)
+#define ERROR(...) LOG_AT(::Aux::Log::LogLevel::ERROR, __VA_ARGS__)
+#define WARN(...) LOG_AT(::Aux::Log::LogLevel::WARN, __VA_ARGS__)
+#define INFO(...) LOG_AT(::Aux::Log::LogLevel::INFO, __VA_ARGS__)
 
 /// Logging with format string
 #define LOG_ATF(level, ...) \
     ::Aux::Log::logF({__FILE__, NETWORKT_PRETTY_FUNCTION, __LINE__}, level, __VA_ARGS__)
-#define FATALF(...) LOG_ATF(::Aux::Log::LogLevel::fatal, __VA_ARGS__)
-#define ERRORF(...) LOG_ATF(::Aux::Log::LogLevel::error, __VA_ARGS__)
-#define WARNF(...) LOG_ATF(::Aux::Log::LogLevel::warn, __VA_ARGS__)
-#define INFOF(...) LOG_ATF(::Aux::Log::LogLevel::info, __VA_ARGS__)
+#define FATALF(...) LOG_ATF(::Aux::Log::LogLevel::FATAL, __VA_ARGS__)
+#define ERRORF(...) LOG_ATF(::Aux::Log::LogLevel::ERROR, __VA_ARGS__)
+#define WARNF(...) LOG_ATF(::Aux::Log::LogLevel::WARN, __VA_ARGS__)
+#define INFOF(...) LOG_ATF(::Aux::Log::LogLevel::INFO, __VA_ARGS__)
 
 // DEBUG and TRACE are no-ops if NETWORKIT_RELEASE_LOGGING is defined.
 #if defined(NETWORKIT_RELEASE_LOGGING)
@@ -41,13 +40,13 @@
 #define TRACEF(...) NETWORKIT_LOG_DUMMY(__VA_ARGS__)
 #define TRACEPOINT NETWORKIT_LOG_DUMMY()
 #else
-#define DEBUG(...) LOG_AT(::Aux::Log::LogLevel::debug, __VA_ARGS__)
-#define TRACE(...) LOG_AT(::Aux::Log::LogLevel::trace, __VA_ARGS__)
+#define DEBUG(...) LOG_AT(::Aux::Log::LogLevel::DEBUG, __VA_ARGS__)
+#define TRACE(...) LOG_AT(::Aux::Log::LogLevel::TRACE, __VA_ARGS__)
 
-#define DEBUGF(...) LOG_ATF(::Aux::Log::LogLevel::debug, __VA_ARGS__)
-#define TRACEF(...) LOG_ATF(::Aux::Log::LogLevel::trace, __VA_ARGS__)
+#define DEBUGF(...) LOG_ATF(::Aux::Log::LogLevel::DEBUG, __VA_ARGS__)
+#define TRACEF(...) LOG_ATF(::Aux::Log::LogLevel::TRACE, __VA_ARGS__)
 
-#define TRACEPOINT LOG_AT(::Aux::Log::LogLevel::trace, "tracepoint")
+#define TRACEPOINT LOG_AT(::Aux::Log::LogLevel::TRACE, "tracepoint")
 #endif // defined(NETWORKIT_RELEASE_LOGGING)
 
 namespace Aux {
@@ -60,45 +59,35 @@ struct Location {
 };
 
 enum class LogLevel {
-    trace,
-    debug,
-    info,
-    warn,
-    error,
-    fatal,
-    quiet // Emits no log messages at all.
+    TRACE,
+    DEBUG,
+    INFO,
+    WARN,
+    ERROR,
+    FATAL,
+    QUIET,         // Emits no log messages at all.
+    trace = TRACE, // this + following added for backwards compatibility
+    debug = DEBUG,
+    info = INFO,
+    warn = WARN,
+    error = ERROR,
+    fatal = FATAL,
+    quiet = QUIET
 };
 
 /**
  * Accept loglevel as string and set.
  * @param logLevel as string
  */
-void setLogLevel(const std::string &logLevel);
+void setLogLevel(std::string_view logLevel);
 
 /**
  * @return current loglevel as string
  */
 std::string getLogLevel();
 
-namespace Settings {
-
-LogLevel TLX_DEPRECATED(getLogLevel());
-
-void TLX_DEPRECATED(setLogLevel(LogLevel p = LogLevel::info));
-
-bool TLX_DEPRECATED(getPrintTime());
-
-void TLX_DEPRECATED(setPrintTime(bool b));
-
-bool TLX_DEPRECATED(getPrintLocation());
-
-void TLX_DEPRECATED(setPrintLocation(bool b));
-
-void TLX_DEPRECATED(setLogfile(const std::string &filename));
-} // namespace Settings
-
 namespace Impl {
-void log(const Location &loc, LogLevel p, const std::string &msg);
+void log(const Location &loc, LogLevel p, std::string_view msg);
 } // namespace Impl
 
 ///! Returns true iff logging at the provided level is currently activated
@@ -115,7 +104,7 @@ void log(const Location &loc, LogLevel p, const T &...args) {
 }
 
 template <typename... T>
-void logF(const Location &loc, LogLevel p, const std::string &format, const T &...args) {
+void logF(const Location &loc, LogLevel p, std::string_view format, const T &...args) {
     if (!isLogLevelEnabled(p))
         return;
 

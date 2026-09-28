@@ -20,8 +20,12 @@ Modules
    community
    components
    correlation
+   csbridge
    distance
    dynamic
+   dynamics
+   dynbase
+   embedding
    engineering
    flow
    generators
@@ -41,6 +45,7 @@ Modules
    plot   
    profiling
    randomization
+   reachability
    sampling
    scd
    simulation
@@ -50,5 +55,6 @@ Modules
    structures
    traversal
    viz
+   vizbridges
    viztasks
    workflows

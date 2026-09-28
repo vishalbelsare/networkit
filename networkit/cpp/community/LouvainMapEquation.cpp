@@ -21,15 +21,42 @@
 
 namespace NetworKit {
 
+LouvainMapEquation::ParallelizationType
+convertStringToParallelizationType(std::string_view parallelizationStrategy) {
+    if (parallelizationStrategy == "none")
+        return LouvainMapEquation::ParallelizationType::NONE;
+    else if (parallelizationStrategy == "relaxmap")
+        return LouvainMapEquation::ParallelizationType::RELAX_MAP;
+    else if (parallelizationStrategy == "synchronous")
+        return LouvainMapEquation::ParallelizationType::SYNCHRONOUS;
+    else
+        throw std::runtime_error("Invalid parallelization type for map equation Louvain: "
+                                 + std::string(parallelizationStrategy));
+}
+
 LouvainMapEquation::LouvainMapEquation(const Graph &graph, bool hierarchical, count maxIterations,
                                        ParallelizationType parallelizationType)
-    : CommunityDetectionAlgorithm(graph), parallel(parallelizationType > ParallelizationType::None),
-      parallelizationType(parallelizationType), hierarchical(hierarchical),
+    : CommunityDetectionAlgorithm(graph), parallelizationType(parallelizationType),
+      parallel(parallelizationType > ParallelizationType::NONE), hierarchical(hierarchical),
       maxIterations(maxIterations), clusterCut(graph.upperNodeIdBound()),
       clusterVolume(graph.upperNodeIdBound()),
-      locks(parallelizationType == ParallelizationType::RelaxMap ? graph.upperNodeIdBound() : 0),
+      locks(parallelizationType == ParallelizationType::RELAX_MAP ? graph.upperNodeIdBound() : 0),
       nextPartition(
-          parallelizationType == ParallelizationType::Synchronous ? graph.upperNodeIdBound() : 0),
+          parallelizationType == ParallelizationType::SYNCHRONOUS ? graph.upperNodeIdBound() : 0),
+      ets_neighborClusterWeights(parallel ? Aux::getMaxNumberOfThreads() : 1) {
+    result = Partition(graph.upperNodeIdBound());
+}
+
+LouvainMapEquation::LouvainMapEquation(const Graph &graph, bool hierarchical, count maxIterations,
+                                       std::string_view parallelizationStrategy)
+    : CommunityDetectionAlgorithm(graph),
+      parallelizationType(convertStringToParallelizationType(parallelizationStrategy)),
+      parallel(parallelizationType != ParallelizationType::NONE), hierarchical(hierarchical),
+      maxIterations(maxIterations), clusterCut(graph.upperNodeIdBound()),
+      clusterVolume(graph.upperNodeIdBound()),
+      locks(parallelizationType == ParallelizationType::RELAX_MAP ? graph.upperNodeIdBound() : 0),
+      nextPartition(
+          parallelizationType == ParallelizationType::SYNCHRONOUS ? graph.upperNodeIdBound() : 0),
       ets_neighborClusterWeights(parallel ? Aux::getMaxNumberOfThreads() : 1) {
     result = Partition(graph.upperNodeIdBound());
 }
@@ -48,7 +75,7 @@ void LouvainMapEquation::run() {
         for (node u = 0; u < G->upperNodeIdBound(); ++u) {
             if (!G->hasNode(u)) {
                 result.remove(u);
-                if (parallel && parallelizationType == ParallelizationType::Synchronous) {
+                if (parallel && parallelizationType == ParallelizationType::SYNCHRONOUS) {
                     nextPartition.remove(u);
                 }
             }
@@ -72,7 +99,7 @@ void LouvainMapEquation::run() {
         DEBUG("Map equation is ", mapEquation());
 #endif
         std::shuffle(nodes.begin(), nodes.end(), Aux::Random::getURNG());
-        if (parallelizationType == ParallelizationType::Synchronous) {
+        if (parallelizationType == ParallelizationType::SYNCHRONOUS) {
             numberOfNodesMoved = synchronousLocalMoving(nodes, iteration);
         } else {
             numberOfNodesMoved = localMoving(nodes, iteration);
@@ -185,7 +212,9 @@ count LouvainMapEquation::synchronousLocalMoving(std::vector<node> &nodes, count
 
 #ifndef NDEBUG
 #pragma omp single
-            { checkUpdatedCutsAndVolumesAgainstRecomputation(); }
+            {
+                checkUpdatedCutsAndVolumesAgainstRecomputation();
+            }
 // don't start the next round of moves, before the old ones were validated
 #pragma omp barrier
 #endif
@@ -369,7 +398,7 @@ bool LouvainMapEquation::performMove(node u, double degree, double loopWeight, n
                                      double weightToCurrent) {
     bool moved = true;
     if (parallel) {
-        assert(parallelizationType == ParallelizationType::RelaxMap);
+        assert(parallelizationType == ParallelizationType::RELAX_MAP);
 
         // lock currentCluster and targetCluster
         locks[std::min(currentCluster, targetCluster)].lock();
@@ -442,7 +471,7 @@ void LouvainMapEquation::runHierarchical() {
          G->numberOfNodes(), " nodes)");
 
     ParallelizationType para =
-        metaGraph.numberOfNodes() > 10000 ? parallelizationType : ParallelizationType::None;
+        metaGraph.numberOfNodes() > 10000 ? parallelizationType : ParallelizationType::NONE;
     LouvainMapEquation recursion(metaGraph, true, maxIterations, para);
     recursion.run();
     const Partition &metaPartition = recursion.getPartition();
@@ -497,16 +526,12 @@ void LouvainMapEquation::calculateInitialClusterCutAndVolume() {
     }
 }
 
-std::string LouvainMapEquation::toString() const {
-    return "LouvainMapEquation";
-}
-
 #ifndef NDEBUG
 
 double LouvainMapEquation::plogpRel(double w) {
     if (w > 0) {
         double p = w / totalVolume;
-        return p * log(p);
+        return p * std::log(p);
     }
     return 0;
 }

@@ -1,10 +1,7 @@
-// no-networkit-format
 #ifndef NETWORKIT_COMMUNITY_ISOLATED_INTERPARTITION_EXPANSION_HPP_
 #define NETWORKIT_COMMUNITY_ISOLATED_INTERPARTITION_EXPANSION_HPP_
 
 #include <networkit/community/LocalPartitionEvaluation.hpp>
-
-#include <tlx/define/deprecated.hpp>
 
 namespace NetworKit {
 
@@ -36,18 +33,8 @@ public:
      * @return true - smaller values are better than larger values.
      */
     bool isSmallBetter() const override { return true; };
-
-    /**
-     * @return false - this algorithm is not parallel.
-     */
-    bool TLX_DEPRECATED(isParallel() const override) { return false; };
-
-    /**
-     * Get the name of the algorithm.
-     */
-    std::string TLX_DEPRECATED(toString() const override) { return "Isolated inter-partition expansion"; };
 };
 
-}
+} // namespace NetworKit
 
 #endif // NETWORKIT_COMMUNITY_ISOLATED_INTERPARTITION_EXPANSION_HPP_

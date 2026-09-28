@@ -35,11 +35,12 @@ networkit_add_module(community
     SampledGraphStructuralRandMeasure.cpp
     SampledNodeStructuralRandMeasure.cpp
     StablePartitionNodes.cpp
-	LouvainMapEquation.cpp
+    LouvainMapEquation.cpp
+    ParallelLeiden.cpp
     )
 
 networkit_module_link_modules(community
-    auxiliary base coarsening components flow graph matching scd structures)
+    auxiliary coarsening components flow graph matching scd structures)
 
 add_subdirectory(test)
 

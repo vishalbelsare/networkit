@@ -7,7 +7,6 @@
 
 #include <atomic>
 #include <cmath>
-#include <limits>
 #include <omp.h>
 
 #include <networkit/GlobalState.hpp>
@@ -39,10 +38,6 @@ static uint64_t getSeed_(uint64_t globSeedGen) {
 
 uint64_t getSeed() {
     return getSeed_(NetworKit::GlobalState::getGlobalSeed());
-}
-
-bool getUseThreadId() {
-    return NetworKit::GlobalState::getSeedUseThreadId();
 }
 
 std::mt19937_64 &getURNG() {

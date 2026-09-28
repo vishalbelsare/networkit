@@ -14,6 +14,7 @@
 #include <cmath>
 #include <numeric>
 #include <omp.h>
+#include <ranges>
 #include <stdexcept>
 #include <vector>
 
@@ -41,65 +42,21 @@ class CSRGeneralMatrix {
     bool isSorted;
     ValueType zero;
 
-    /**
-     * Quicksort algorithm on columnIdx between [@a left, @a right].
-     * @param left
-     * @param right
-     */
-    void quicksort(index left, index right) {
-        if (left >= right)
-            return;
-        index pivotIdx = partition(left, right);
-        if (pivotIdx != 0) {
-            quicksort(left, pivotIdx - 1);
+    class IndexProxy {
+    public:
+        IndexProxy(CSRGeneralMatrix &mat, index i, index j) : Matrix{mat}, i{i}, j{j} {}
+
+        operator const ValueType &() const {
+            return const_cast<const CSRGeneralMatrix &>(Matrix)(i, j);
         }
-        quicksort(pivotIdx + 1, right);
-    }
 
-    /**
-     * Partitions columnIdx between [@a left, @a right] after selecting the pivot
-     * in the middle.
-     * @param left
-     * @param right
-     * @return The pivot.
-     */
-    index partition(index left, index right) {
-        index mid = (left + right) / 2;
-        index pivot = columnIdx[mid];
-        std::swap(columnIdx[mid], columnIdx[right]);
-        std::swap(nonZeros[mid], nonZeros[right]);
+        void operator=(double rhs) { Matrix.setValue(i, j, rhs); }
 
-        index i = left;
-        for (index j = left; j < right; ++j) {
-            if (columnIdx[j] <= pivot) {
-                std::swap(columnIdx[i], columnIdx[j]);
-                std::swap(nonZeros[i], nonZeros[j]);
-                ++i;
-            }
-        }
-        std::swap(columnIdx[i], columnIdx[right]);
-        std::swap(nonZeros[i], nonZeros[right]);
-        return i;
-    }
-
-    /**
-     * Binary search the sorted columnIdx vector between [@a left, @a right]
-     * for column @a j.
-     * If @a j is not present, the index that is immediately left of the place
-     * where @a j would be is returned.
-     * @param left
-     * @param right
-     * @param j
-     * @return The position of column @a j in columnIdx or the element immediately
-     * to the left of the place where @a j would be.
-     */
-    index binarySearchColumns(index left, index right, index j) const {
-        assert(sorted());
-        const auto it = std::lower_bound(columnIdx.begin() + left, columnIdx.begin() + right, j);
-        if (it == columnIdx.end() || *it != j)
-            return none;
-        return it - columnIdx.begin();
-    }
+    private:
+        CSRGeneralMatrix &Matrix;
+        index i;
+        index j;
+    };
 
 public:
     /** Default constructor */
@@ -173,11 +130,8 @@ public:
             rowIdx[row]++;
         }
 
-        for (index i = 0, firstIdxOfRow = 0; i <= nRows; ++i) {
-            index newRow = rowIdx[i];
-            rowIdx[i] = firstIdxOfRow;
-            firstIdxOfRow = newRow;
-        }
+        rowIdx.back() = 0;
+        std::rotate(rowIdx.rbegin(), rowIdx.rbegin() + 1, rowIdx.rend());
     }
 
     /**
@@ -249,6 +203,8 @@ public:
     /** Default copy assignment operator */
     CSRGeneralMatrix &operator=(const CSRGeneralMatrix &other) = default;
 
+    IndexProxy operator()(index i, index j) { return IndexProxy(*this, i, j); }
+
     /**
      * Compares this matrix to @a other and returns true if the shape and zero
      * element are the same as well as
@@ -256,10 +212,33 @@ public:
      * @param other
      */
     bool operator==(const CSRGeneralMatrix &other) const {
-        bool equal = nRows == other.nRows && nCols == other.nCols && zero == other.zero;
+        bool equal = nRows == other.nRows && nCols == other.nCols && zero == other.zero
+                     && nnz() == other.nnz();
         if (equal)
             forNonZeroElementsInRowOrder([&](index i, index j, ValueType value) {
                 if (other(i, j) != value) {
+                    equal = false;
+                    return;
+                }
+            });
+
+        return equal;
+    }
+
+    /**
+     * Compares this matrix to @a other and returns true if the shape and zero
+     * element are the same as well as
+     * all entries are the same (within the absolute error range of @a eps), otherwise returns
+     * false.
+     * @param other
+     * @param eps
+     */
+    bool isApprox(const CSRGeneralMatrix &other, const double eps = 0.01) const {
+        bool equal = nRows == other.nRows && nCols == other.nCols && zero == other.zero
+                     && nnz() == other.nnz();
+        if (equal)
+            forNonZeroElementsInRowOrder([&](index i, index j, ValueType value) {
+                if (std::abs(other(i, j) - value) > eps) {
                     equal = false;
                     return;
                 }
@@ -308,29 +287,32 @@ public:
     /**
      * @return Value at matrix position (i,j).
      */
-    ValueType operator()(index i, index j) const {
+    const ValueType &operator()(index i, index j) const {
         assert(i < nRows);
         assert(j < nCols);
 
         if (rowIdx[i] == rowIdx[i + 1])
             return zero; // no non-zero value is present in this row
 
-        double value = zero;
         if (!sorted()) {
             for (index k = rowIdx[i]; k < rowIdx[i + 1]; ++k) {
                 if (columnIdx[k] == j) {
-                    value = nonZeros[k];
-                    break;
+                    return nonZeros[k];
                 }
             }
         } else {
-            index colIdx = binarySearchColumns(rowIdx[i], rowIdx[i + 1] - 1, j);
-            if (colIdx != none && rowIdx[i] <= colIdx && columnIdx[colIdx] == j) {
-                value = nonZeros[colIdx];
+            // finding the correct index where j should be inserted
+            auto it = std::lower_bound(columnIdx.begin() + rowIdx[i],
+                                       columnIdx.begin() + rowIdx[i + 1], j);
+            index colIdx = static_cast<index>(it - columnIdx.begin());
+
+            if (it == columnIdx.end())
+                return zero;
+            else if (*it == j) {
+                return nonZeros[colIdx];
             }
         }
-
-        return value;
+        return zero;
     }
 
     /**
@@ -343,81 +325,100 @@ public:
         assert(j < nCols);
 
         index colIdx = none;
-        if (nnzInRow(i) == 0) {
-            colIdx = none;
-        } else if (!sorted()) {
+
+        if (!isSorted) {
             for (index k = rowIdx[i]; k < rowIdx[i + 1]; ++k) {
                 if (columnIdx[k] == j) {
                     colIdx = k;
                 }
             }
-        } else {
-            colIdx = binarySearchColumns(rowIdx[i], rowIdx[i + 1] - 1, j);
-        }
+            if (colIdx != none) {
+                if (value != zero) { // update existing value
+                    nonZeros[colIdx] = value;
+                } else { // remove value if set to zero
+                    columnIdx.erase(columnIdx.begin() + colIdx);
+                    nonZeros.erase(nonZeros.begin() + colIdx);
 
-        if (colIdx != none && colIdx >= rowIdx[i]
-            && columnIdx[colIdx] == j) { // the matrix already has an entry at (i,j) => replace it
-            if (value == getZero()) {    // remove the nonZero value
-                columnIdx.erase(columnIdx.begin() + colIdx);
-                nonZeros.erase(nonZeros.begin() + colIdx);
+                    for (index k = i + 1; k < rowIdx.size(); ++k) {
+                        --rowIdx[k];
+                    }
+                }
+            } else if (value != zero) { // don't add zero values
+                columnIdx.emplace(std::next(columnIdx.begin(), rowIdx[i + 1]), j);
+                nonZeros.emplace(std::next(nonZeros.begin(), rowIdx[i + 1]), value);
 
                 // update rowIdx
                 for (index k = i + 1; k < rowIdx.size(); ++k) {
-                    --rowIdx[k];
-                }
-            } else {
-                nonZeros[colIdx] = value;
-            }
-        } else { // create a new non-zero entry at (i,j)
-            if (!sorted()) {
-                columnIdx.emplace(std::next(columnIdx.begin(), rowIdx[i + 1]), j);
-                nonZeros.emplace(std::next(nonZeros.begin(), rowIdx[i + 1]), value);
-            } else {
-                if (colIdx < rowIdx[i] || colIdx == none) { // emplace the value in
-                                                            // front of all other values
-                                                            // of row i
-                    columnIdx.emplace(std::next(columnIdx.begin(), rowIdx[i]), j);
-                    nonZeros.emplace(std::next(nonZeros.begin(), rowIdx[i]), value);
-                } else {
-                    columnIdx.emplace(std::next(columnIdx.begin(), colIdx + 1), j);
-                    nonZeros.emplace(std::next(nonZeros.begin(), colIdx + 1), value);
+                    ++rowIdx[k];
                 }
             }
+        } else {
+            // finding the correct index where j should be inserted
+            auto it = std::lower_bound(columnIdx.begin() + rowIdx[i],
+                                       columnIdx.begin() + rowIdx[i + 1], j);
+            colIdx = static_cast<index>(it - columnIdx.begin());
 
-            // update rowIdx
-            for (index k = i + 1; k < rowIdx.size(); ++k) {
-                rowIdx[k]++;
+            if (colIdx < rowIdx[i + 1] && columnIdx[colIdx] == j) {
+                if (value != zero) { // update existing value
+                    nonZeros[colIdx] = value;
+                } else { // remove value if set to zero
+                    columnIdx.erase(columnIdx.begin() + colIdx);
+                    nonZeros.erase(nonZeros.begin() + colIdx);
+
+                    for (index k = i + 1; k < rowIdx.size(); ++k) {
+                        --rowIdx[k];
+                    }
+                }
+            } else if (value != zero) { // don't add zero values
+                columnIdx.emplace(std::next(columnIdx.begin(), colIdx), j);
+                nonZeros.emplace(std::next(nonZeros.begin(), colIdx), value);
+
+                // update rowIdx
+                for (index k = i + 1; k < rowIdx.size(); ++k) {
+                    ++rowIdx[k];
+                }
             }
         }
+        assert(this->operator()(i, j) == value);
     }
 
     /**
      * Sorts the column indices in each row for faster access.
      */
     void sort() {
-#pragma omp parallel for schedule(guided)
-        for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
-            if (rowIdx[i + 1] - rowIdx[i] > 1) {
-                quicksort(rowIdx[i], rowIdx[i + 1] - 1);
+#pragma omp parallel
+        {
+            std::vector<index> permutation(nCols);
+#pragma omp for schedule(guided)
+            for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
+                const index startOfRow = rowIdx[i], endOfRow = rowIdx[i + 1];
+                const count nonZerosInRow = endOfRow - startOfRow;
+                if (nonZerosInRow <= 1
+                    || std::is_sorted(columnIdx.begin() + startOfRow, columnIdx.begin() + endOfRow))
+                    continue;
+
+                permutation.resize(nonZerosInRow);
+                std::iota(permutation.begin(), permutation.end(), index{0});
+                std::ranges::sort(permutation, [&](index x, index y) {
+                    return columnIdx[startOfRow + x] < columnIdx[startOfRow + y];
+                });
+
+                Aux::ArrayTools::applyPermutation(columnIdx.begin() + startOfRow,
+                                                  columnIdx.begin() + endOfRow,
+                                                  permutation.begin());
+
+                Aux::ArrayTools::applyPermutation(nonZeros.begin() + startOfRow,
+                                                  nonZeros.begin() + endOfRow, permutation.begin());
             }
         }
-
-#ifndef NETWORKIT_SANITY_CHECKS
-        bool sorted = true;
-        tlx::unused(sorted);
-#pragma omp parallel for
-        for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
-            for (index j = rowIdx[i] + 1; j < rowIdx[i + 1]; ++j) {
-                if (columnIdx[j - 1] > columnIdx[j]) {
-                    sorted = false;
-                    break;
-                }
-            }
-        }
-        assert(sorted);
-#endif // NETWORKIT_SANITY_CHECKS
-
         isSorted = true;
+
+#ifdef NETWORKIT_SANITY_CHECKS
+#pragma omp parallel for
+        for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i)
+            assert(
+                std::is_sorted(columnIdx.begin() + rowIdx[i], columnIdx.begin() + rowIdx[i + 1]));
+#endif // NETWORKIT_SANITY_CHECKS
     }
 
     /**
@@ -460,25 +461,12 @@ public:
         if (sorted()) {
 #pragma omp parallel for
             for (omp_index i = 0; i < static_cast<omp_index>(diag.getDimension()); ++i) {
-                if (rowIdx[i] == rowIdx[i + 1])
-                    continue; // no entry in row i
-                index left = rowIdx[i];
-                index right = rowIdx[i + 1] - 1;
-                index mid = (left + right) / 2;
-                while (left <= right) {
-                    if (columnIdx[mid] == i) {
-                        diag[i] = nonZeros[mid];
-                        break;
-                    }
 
-                    if (columnIdx[mid] < i) {
-                        left = mid + 1;
-                    } else {
-                        right = mid - 1;
-                    }
+                const auto it = std::lower_bound(columnIdx.begin() + rowIdx[i],
+                                                 columnIdx.begin() + rowIdx[i + 1], i);
 
-                    mid = (left + right) / 2;
-                }
+                if (it != columnIdx.end() && *it == static_cast<index>(i))
+                    diag[i] = nonZeros[it - columnIdx.begin()];
             }
         } else {
 #pragma omp parallel for
@@ -610,7 +598,7 @@ public:
                 }
             }
 
-            std::fill(marker.begin(), marker.end(), -1);
+            std::ranges::fill(marker, -1);
 
 #pragma omp barrier
 #pragma omp single
@@ -974,10 +962,11 @@ public:
                 triples.push_back({i, j, -weight});
             });
 
-            triples.push_back({i, i, weightedDegree}); // degree matrix
+            if (weightedDegree != 0)
+                triples.push_back({i, i, weightedDegree}); // degree matrix
         });
 
-        return CSRGeneralMatrix(graph.upperNodeIdBound(), triples, zero);
+        return CSRGeneralMatrix(graph.numberOfNodes(), triples, zero);
     }
 
     /**
@@ -1032,6 +1021,27 @@ public:
      */
     template <typename L>
     void forElementsInRow(index i, L handle) const;
+
+    /**
+     * Iterate in parallel over all elements (including zeros) of row @a row in the matrix and call
+     * handler(index column, double value)
+     */
+    template <typename L>
+    void parallelForElementsInRow(index row, L handle) const;
+
+    /**
+     * Iterate over all elements of the matrix in row order and call handler (lambda
+     * closure).
+     */
+    template <typename L>
+    void forElementsInRowOrder(L handle) const;
+
+    /**
+     * Iterate in parallel over all rows and call handler (lambda closure) on elements of
+     * the matrix.
+     */
+    template <typename L>
+    void parallelForElementsInRowOrder(L handle) const;
 
     /**
      * Iterate over all non-zero elements of the matrix in row order and call
@@ -1209,6 +1219,45 @@ inline void CSRGeneralMatrix<ValueType>::forElementsInRow(index i, L handle) con
 
 template <typename ValueType>
 template <typename L>
+inline void CSRGeneralMatrix<ValueType>::parallelForElementsInRow(index i, L handle) const {
+    row(i).parallelForElements(handle);
+}
+
+template <typename ValueType>
+template <typename L>
+inline void CSRGeneralMatrix<ValueType>::forElementsInRowOrder(L handle) const {
+    for (index i = 0; i < nRows; ++i) {
+        index col = 0;
+        for (index k = rowIdx[i]; k < rowIdx[i + 1]; ++k) {
+            while (col < columnIdx[k]) {
+                handle(i, col, getZero());
+                ++col;
+            }
+            handle(i, col, nonZeros[k]);
+            ++col;
+        }
+    }
+}
+
+template <typename ValueType>
+template <typename L>
+inline void CSRGeneralMatrix<ValueType>::parallelForElementsInRowOrder(L handle) const {
+#pragma omp parallel for
+    for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
+        index col = 0;
+        for (index k = rowIdx[i]; k < rowIdx[i + 1]; ++k) {
+            while (col < columnIdx[k]) {
+                handle(i, col, getZero());
+                ++col;
+            }
+            handle(i, col, nonZeros[k]);
+            ++col;
+        }
+    }
+}
+
+template <typename ValueType>
+template <typename L>
 inline void CSRGeneralMatrix<ValueType>::forNonZeroElementsInRowOrder(L handle) const {
     for (index i = 0; i < nRows; ++i)
         for (index k = rowIdx[i]; k < rowIdx[i + 1]; ++k)
@@ -1223,5 +1272,21 @@ inline void CSRGeneralMatrix<ValueType>::parallelForNonZeroElementsInRowOrder(L 
         for (index k = rowIdx[i]; k < rowIdx[i + 1]; ++k)
             handle(i, columnIdx[k], nonZeros[k]);
 }
+
+// print functions for test debugging / output
+template <typename T>
+inline std::ostream &operator<<(std::ostream &os, const CSRGeneralMatrix<T> &M) {
+    for (index row = 0; row < M.numberOfRows(); ++row) {
+        if (row != 0)
+            os << std::endl;
+        for (index col = 0; col < M.numberOfColumns(); ++col) {
+            if (col != 0)
+                os << ", ";
+            os << M(row, col);
+        }
+    }
+    return os;
+}
+
 } /* namespace NetworKit */
 #endif // NETWORKIT_ALGEBRAIC_CSR_GENERAL_MATRIX_HPP_

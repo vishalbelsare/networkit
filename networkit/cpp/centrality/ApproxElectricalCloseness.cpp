@@ -9,6 +9,7 @@
 #include <numeric>
 #include <omp.h>
 #include <queue>
+#include <stack>
 
 #include <networkit/algebraic/CSRMatrix.hpp>
 #include <networkit/auxiliary/Random.hpp>
@@ -182,7 +183,7 @@ void ApproxElectricalCloseness::computeNodeSequence() {
     // of them arbitrarily select one of them.
     std::queue<std::pair<node, index>> q;
     const auto &rootComps = bcc.getComponentsOfNode(root);
-    q.push({root, *(rootComps.begin())});
+    q.emplace(root, *(rootComps.begin()));
 
     topOrder.reserve(bcc.numberOfComponents());
     topOrder.insert(topOrder.begin(), rootComps.begin(), rootComps.end());
@@ -210,7 +211,7 @@ void ApproxElectricalCloseness::computeNodeSequence() {
                         topOrder.push_back(vComponentIndex);
                     }
                 }
-                q.push({v, *(vComps.begin())});
+                q.emplace(v, *(vComps.begin()));
                 status[v] = NodeStatus::VISITED;
             }
         });
@@ -414,7 +415,7 @@ void ApproxElectricalCloseness::dfsUST() {
     const auto &siblingPtr = ustSiblingPtrGlobal[omp_get_thread_num()];
 
     std::stack<std::pair<node, node>> stack;
-    stack.push({root, childPtr[root]});
+    stack.emplace(root, childPtr[root]);
 
     count timestamp = 0;
     do {
@@ -428,7 +429,7 @@ void ApproxElectricalCloseness::dfsUST() {
         } else {
             stack.top().second = siblingPtr[v];
             tVisit[v] = ++timestamp;
-            stack.push({v, childPtr[v]});
+            stack.emplace(v, childPtr[v]);
             assert(parentGlobal[omp_get_thread_num()][v] == u);
         }
     } while (!stack.empty());
@@ -490,7 +491,7 @@ void ApproxElectricalCloseness::run() {
             const count n = G.numberOfNodes();
 
             const auto L = CSRMatrix::laplacianMatrix(G);
-            Diameter diamAlgo(G, estimatedRange, 0);
+            Diameter diamAlgo(G, DiameterAlgo::ESTIMATED_RANGE, 0);
             diamAlgo.run();
             // Getting diameter upper bound
             const auto diam = static_cast<double>(diamAlgo.getDiameter().second);

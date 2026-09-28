@@ -7,6 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -22,10 +23,10 @@ template <typename... T>
 std::ostream &printToStream(std::ostream &stream, const T &...args);
 
 template <typename... T>
-std::string toStringF(const std::string &format, const T &...args);
+std::string toStringF(std::string_view format, const T &...args);
 
 template <typename... T>
-std::ostream &printToStreamF(std::ostream &stream, const std::string &format, const T &...args);
+std::ostream &printToStreamF(std::ostream &stream, std::string_view format, const T &...args);
 
 // Implementation
 /////////////////
@@ -34,11 +35,16 @@ namespace Impl {
 
 // Categories of how a type might be printable
 enum class PrintableCategory {
-    Unprintable,
-    Iteratable,
-    Pair,
-    Tuple,
-    Streamable,
+    UNPRINTABLE,
+    ITERATABLE,
+    PAIR,
+    TUPLE,
+    STREAMABLE,
+    Unprintable = UNPRINTABLE, // this + following added for backwards compatibility
+    Iteratable = ITERATABLE,
+    Pair = PAIR,
+    Tuple = TUPLE,
+    Streamable = STREAMABLE
 };
 
 template <typename T>
@@ -52,20 +58,20 @@ constexpr bool isIteratable();
 
 template <typename T>
 constexpr PrintableCategory getPrintableCategory() {
-    return isStreamable<T>()   ? PrintableCategory::Streamable
-           : isPair<T>()       ? PrintableCategory::Pair
-           : isTuple<T>()      ? PrintableCategory::Tuple
-           : isIteratable<T>() ? PrintableCategory::Iteratable
+    return isStreamable<T>()   ? PrintableCategory::STREAMABLE
+           : isPair<T>()       ? PrintableCategory::PAIR
+           : isTuple<T>()      ? PrintableCategory::TUPLE
+           : isIteratable<T>() ? PrintableCategory::ITERATABLE
                                :
-                               /* else: */ PrintableCategory::Unprintable;
+                               /* else: */ PrintableCategory::UNPRINTABLE;
 }
 template <PrintableCategory Tag>
 struct PrintableCategoryTag {};
-using IteratableTag = PrintableCategoryTag<PrintableCategory::Iteratable>;
-using PairTag = PrintableCategoryTag<PrintableCategory::Pair>;
-using TupleTag = PrintableCategoryTag<PrintableCategory::Tuple>;
-using StreamableTag = PrintableCategoryTag<PrintableCategory::Streamable>;
-using UnprintableTag = PrintableCategoryTag<PrintableCategory::Unprintable>;
+using IteratableTag = PrintableCategoryTag<PrintableCategory::ITERATABLE>;
+using PairTag = PrintableCategoryTag<PrintableCategory::PAIR>;
+using TupleTag = PrintableCategoryTag<PrintableCategory::TUPLE>;
+using StreamableTag = PrintableCategoryTag<PrintableCategory::STREAMABLE>;
+using UnprintableTag = PrintableCategoryTag<PrintableCategory::UNPRINTABLE>;
 
 template <typename T, typename... Args>
 void printToStream(std::ostream &stream, const T &, const Args &...);
@@ -88,20 +94,20 @@ extern void printToStreamTagged(std::ostream &, const T &, UnprintableTag);
 
 template <typename T, typename... Args>
 void printToStream(std::ostream &stream, const T &arg, const Args &...args) {
-    static_assert(getPrintableCategory<T>() != PrintableCategory::Unprintable,
+    static_assert(getPrintableCategory<T>() != PrintableCategory::UNPRINTABLE,
                   "printToStream must not be called with an unprintable argument");
     printToStreamTagged(stream, arg, PrintableCategoryTag<getPrintableCategory<T>()>{});
     printToStream(stream, args...);
 }
 
-inline std::tuple<std::string::const_iterator, bool>
-printFormatPartToStream(std::ostream &stream, std::string::const_iterator begin,
-                        std::string::const_iterator end);
+inline std::tuple<std::string_view::const_iterator, bool>
+printFormatPartToStream(std::ostream &stream, std::string_view::const_iterator begin,
+                        std::string_view::const_iterator end);
 
-inline void printToStreamF(std::ostream &stream, std::string::const_iterator format_begin,
-                           std::string::const_iterator format_end) {
+inline void printToStreamF(std::ostream &stream, std::string_view::const_iterator format_begin,
+                           std::string_view::const_iterator format_end) {
     bool printArgument;
-    using iterator = std::string::const_iterator;
+    using iterator = std::string_view::const_iterator;
     iterator it;
     std::tie(it, printArgument) = printFormatPartToStream(stream, format_begin, format_end);
     if (printArgument) {
@@ -109,10 +115,11 @@ inline void printToStreamF(std::ostream &stream, std::string::const_iterator for
     }
 }
 template <typename T, typename... Args>
-void printToStreamF(std::ostream &stream, std::string::const_iterator format_begin,
-                    std::string::const_iterator format_end, const T &arg, const Args &...args) {
+void printToStreamF(std::ostream &stream, std::string_view::const_iterator format_begin,
+                    std::string_view::const_iterator format_end, const T &arg,
+                    const Args &...args) {
     bool printArgument;
-    using iterator = std::string::const_iterator;
+    using iterator = std::string_view::const_iterator;
     iterator it;
     std::tie(it, printArgument) = printFormatPartToStream(stream, format_begin, format_end);
     if (printArgument) {
@@ -131,9 +138,9 @@ void printToStreamF(std::ostream &stream, std::string::const_iterator format_beg
  * @returns The iterator that points one after the last consumed
  * character and whether a further argument should be printed.
  */
-inline auto printFormatPartToStream(std::ostream &stream, std::string::const_iterator begin,
-                                    std::string::const_iterator end)
-    -> std::tuple<std::string::const_iterator, bool> {
+inline auto printFormatPartToStream(std::ostream &stream, std::string_view::const_iterator begin,
+                                    std::string_view::const_iterator end)
+    -> std::tuple<std::string_view::const_iterator, bool> {
     auto it = begin;
     while (it != end) {
         auto nextPercent = std::find(it, end, '%');
@@ -298,14 +305,14 @@ std::ostream &printToStream(std::ostream &stream, const T &...args) {
 }
 
 template <typename... T>
-std::string toStringF(const std::string &format, const T &...args) {
+std::string toStringF(std::string_view format, const T &...args) {
     std::stringstream stream;
     printToStreamF(stream, format, args...);
     return stream.str();
 }
 
 template <typename... T>
-std::ostream &printToStreamF(std::ostream &stream, const std::string &format, const T &...args) {
+std::ostream &printToStreamF(std::ostream &stream, std::string_view format, const T &...args) {
     Impl::printToStreamF(stream, format.begin(), format.end(), args...);
     return stream;
 }

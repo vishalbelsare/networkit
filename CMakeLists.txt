@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.14)
 project(networkit CXX)
 
 if("${PROJECT_SOURCE_DIR}" STREQUAL "${PROJECT_BINARY_DIR}")
@@ -19,13 +19,15 @@ option(NETWORKIT_FLATINSTALL "Install into a flat directory structure (useful wh
 option(NETWORKIT_COVERAGE "Build with support for coverage" OFF)
 option(NETWORKIT_SANITY_CHECKS "Algorithms will perform further (expensive) checks" OFF)
 set(NETWORKIT_PYTHON "" CACHE STRING "Directory containing Python.h. Implies MONOLITH=TRUE")
+set(NETWORKIT_NUMPY "" CACHE STRING "Directory containing Numpy.h.")
 set(NETWORKIT_PYTHON_SOABI "" CACHE STRING "Platform specific file extension. Implies MONOLITH=TRUE")
 set(NETWORKIT_WITH_SANITIZERS "" CACHE STRING "Uses sanitizers during the compilation")
 set(NETWORKIT_RELEASE_LOGGING "AUTO" CACHE STRING "Do not compile log messages at levels TRACE or DEBUG (AUTO|ON|OFF)")
 set(NETWORKIT_PYTHON_RPATH "" CACHE STRING "Build specific rpath references.")
 set(NETWORKIT_EXT_TLX "" CACHE STRING "Absolute path for external tlx-library. If not set, extlibs/tlx is used")
 
-set (NETWORKIT_CXX_STANDARD "14" CACHE STRING "CXX Version to compile with. Currently fixed to 14")
+set (NETWORKIT_CXX_STANDARD "20" CACHE STRING "CXX Version to compile with. Currently fixed to 20")
+set(NETWORKIT_CLANG_TIDY_EXECUTABLE "clang-tidy" CACHE STRING "clang-tidy executable to use when NETWORKIT_CLANG_TIDY is enabled")
 
 # Allow user to set installation paths relative to CMAKE_INSTALL_PREFIX
 
@@ -62,7 +64,7 @@ if (NETWORKIT_QUIET_LOGGING)
 endif()
 
 if (NETWORKIT_RELEASE_LOGGING STREQUAL "AUTO")
-	if (CMAKE_BUILD_TYPE STREQUAL "Release")
+	if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
 		set(NETWORKIT_RELEASE_LOGGING "ON")
 	else()
 		set(NETWORKIT_RELEASE_LOGGING "OFF")
@@ -89,7 +91,7 @@ if (("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang") OR
 	endif()
 
 elseif (MSVC)
-	set(NETWORKIT_CXX_FLAGS "${NETWORKIT_CXX_FLAGS} /DNETWORKIT_OMP2 /MP /DNETWORKIT_WINDOWS")
+	set(NETWORKIT_CXX_FLAGS "${NETWORKIT_CXX_FLAGS} /DNETWORKIT_OMP2 /MP /DNETWORKIT_WINDOWS /permissive-")
 
 	# TTMath requires running an ASM for MSVC which we disable here at the cost of worse performance
 	set(NETWORKIT_CXX_FLAGS "${NETWORKIT_CXX_FLAGS} /DTTMATH_NOASM=1")
@@ -144,24 +146,23 @@ find_package(OpenMP)
 if(NOT OpenMP_FOUND)
 	if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang")
 		# This will find default libomp-installations for homebrew/MacPorts
-		find_library(LIBOMP_PATH NAMES omp PATHS "/usr/local/opt/libomp/lib" "/opt/local/lib/libomp")
-		find_path(LIBOMP_INCLUDE NAMES omp.h PATHS "/usr/local/opt/libomp/include" "/opt/local/include/libomp")
+		find_library(LIBOMP_PATH NAMES omp PATHS "/usr/local/opt/libomp/lib" "/opt/local/lib/libomp" "/opt/homebrew/opt/libomp/lib")
+		find_path(LIBOMP_INCLUDE NAMES omp.h PATHS "/usr/local/opt/libomp/include" "/opt/local/include/libomp" "/opt/homebrew/opt/libomp/include")
 		if(LIBOMP_PATH AND LIBOMP_INCLUDE)
 			set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${LIBOMP_INCLUDE}" CACHE STRING "Manually set" FORCE)
 		endif()
 	elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-		if(DEFINED ENV{CONDA_PREFIX})
+		find_library(LIBOMP_PATH NAMES omp PATHS "/usr/lib" "/usr/lib64" "/opt/local/lib/libomp" "/opt/homebrew/opt/libomp/lib")
+		find_path(LIBOMP_INCLUDE NAMES omp.h PATHS "/usr/include" "/usr/local/opt/libomp/include" "/opt/local/include/libomp" "/opt/homebrew/opt/libomp/include")
+		set(OpenMP_CXX_FLAGS "-fopenmp -I${LIBOMP_INCLUDE}" CACHE STRING "Manually set" FORCE)
+	endif()
+
+	# If libomp was not found yet, try to find it in conda environment
+	if(NOT LIBOMP_PATH OR NOT LIBOMP_INCLUDE)
 			find_library(LIBOMP_PATH NAMES omp HINTS "$ENV{CONDA_PREFIX}/lib"
 				PATHS "/usr/lib" "/usr/lib64")
 			find_path(LIBOMP_INCLUDE NAMES omp.h HINTS "$ENV{CONDA_PREFIX}/include"
 				PATHS "/usr/include")
-		else()
-			find_library(LIBOMP_PATH NAMES omp PATHS "/usr/lib" "/usr/lib64")
-			find_path(LIBOMP_INCLUDE NAMES omp.h PATHS "/usr/include")
-		endif()
-		if(LIBOMP_PATH AND LIBOMP_INCLUDE)
-			set(OpenMP_CXX_FLAGS "-fopenmp -I${LIBOMP_INCLUDE}" CACHE STRING "Manually set" FORCE)
-		endif()
 	endif()
 
 	# Set OpenMP-folders in case they are found with the aid of additional hints
@@ -231,6 +232,22 @@ else()
 endif()
 
 ################################################################################
+# Use DHB as a CMake submodule
+if(EXISTS "${PROJECT_SOURCE_DIR}/extlibs/dhb/CMakeLists.txt")
+	set(DHB_WITH_64BIT_IDS ON CACHE BOOL "Build DHB using 64 bit vertex IDs.")
+	
+	if(MSVC)
+		set(DHB_WITH_SYSTEM_ALLOCATOR ON CACHE BOOL "Use DHB system allocator for MSVC targets.")
+	endif()
+	
+	add_subdirectory(extlibs/dhb)
+else()
+	message(FATAL_ERROR
+			"Missing DHB library in extlibs/dhb "
+			"Please run `git submodule update --init` to fetch the submodule.")
+endif()
+
+################################################################################
 # NETWORKIT MODULES
 if(NETWORKIT_BUILD_CORE AND NETWORKIT_MONOLITH)
 
@@ -263,7 +280,12 @@ if(NETWORKIT_BUILD_CORE AND NETWORKIT_MONOLITH)
 		target_include_directories(networkit_state BEFORE PUBLIC "${PROJECT_SOURCE_DIR}/include")
 	endif()
 
-	target_link_libraries(networkit PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx)
+	target_link_libraries(networkit PUBLIC
+		dhb
+		tlx
+		PRIVATE
+		OpenMP::OpenMP_CXX
+	)
 
 	set_target_properties(networkit PROPERTIES
 			CXX_STANDARD ${NETWORKIT_CXX_STANDARD}
@@ -284,7 +306,7 @@ endif()
 # ENABLE CLANG-TIDY
 if (NETWORKIT_CLANG_TIDY)
 	if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-		set_target_properties(networkit PROPERTIES CXX_CLANG_TIDY clang-tidy)
+		set_target_properties(networkit PROPERTIES CXX_CLANG_TIDY "${NETWORKIT_CLANG_TIDY_EXECUTABLE}")
 	else()
 		message(FATAL_ERROR "clang-tidy is only supported when compiling with clang")
 	endif()
@@ -301,10 +323,10 @@ if(NETWORKIT_PYTHON)
 			FIND_PACKAGE(Python3 ${NETWORKIT_PYTHON_VERSION} EXACT COMPONENTS Interpreter Development REQUIRED)
 		endif()
 	endif()
-
+	
 	foreach (EXT base centrality clique coarsening community components correlation
-			 distance dynamics embedding engineering flow generators globals graph graphio
-			 graphtools helpers independentset linkprediction matching
+			 distance dynamics dynbase embedding engineering flow generators globals graph graphio
+			 graphtools helpers independentset linkprediction matching planarity
 			 randomization reachability scd simulation sparsification stats
 			 structures traversal viz)
 
@@ -318,6 +340,7 @@ if(NETWORKIT_PYTHON)
 		target_include_directories(${TARGET_LIB} BEFORE PUBLIC "${PROJECT_SOURCE_DIR}/include")
 		target_include_directories(${TARGET_LIB} PRIVATE "${PROJECT_SOURCE_DIR}/extlibs/ttmath/")
 		target_include_directories(${TARGET_LIB} PRIVATE "${NETWORKIT_PYTHON}")
+		target_include_directories(${TARGET_LIB} PUBLIC "${NETWORKIT_NUMPY}")
 
 		if(NOT NETWORKIT_BUILD_CORE)
 			if(NOT EXTERNAL_NETWORKIT_CORE)
@@ -334,6 +357,11 @@ if(NETWORKIT_PYTHON)
 					LINK_FLAGS "${NETWORKIT_LINK_FLAGS}"
 					PREFIX ""
 					OUTPUT_NAME "${TARGET_LIB}.${NETWORKIT_PYTHON_SOABI}")
+
+		if (NETWORKIT_BUILD_TESTS)
+			target_compile_definitions(${TARGET_LIB} PRIVATE CYTHON_TRACE=1 CYTHON_TRACE_NOGIL=1)
+		endif()
+
 		if(WIN32)
 			set_target_properties(${TARGET_LIB} PROPERTIES SUFFIX .pyd)
 			target_link_libraries(${TARGET_LIB} PRIVATE ${Python3_LIBRARIES})
@@ -354,7 +382,7 @@ if(NETWORKIT_PYTHON)
 			endif()
 		endif()
 
-		target_link_libraries(${TARGET_LIB} PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx)
+		target_link_libraries(${TARGET_LIB} PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx) 
 
 		install(TARGETS ${TARGET_LIB}
 			LIBRARY DESTINATION "${NETWORKIT_LIB_DEST}/networkit")
@@ -383,7 +411,8 @@ function(networkit_add_module modname)
 			COMPILE_FLAGS "${NETWORKIT_CXX_FLAGS}"
 			LINK_FLAGS "${NETWORKIT_LINK_FLAGS}")
 
-		target_link_libraries(${MODULE_TARGET} PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx)
+		target_link_libraries(${MODULE_TARGET} PRIVATE OpenMP::OpenMP_CXX PUBLIC tlx dhb)
+		
 		target_include_directories(${MODULE_TARGET} BEFORE PUBLIC "${PROJECT_SOURCE_DIR}/include")
 		target_include_directories(${MODULE_TARGET} PUBLIC "${PROJECT_SOURCE_DIR}/extlibs/ttmath/")
 
@@ -456,7 +485,7 @@ if (NETWORKIT_BUILD_TESTS)
 			set( gtest_force_shared_crt ON CACHE BOOL "Always use msvcrt.dll" FORCE)
 		endif()
 		option(BUILD_GTEST "Builds the googletest subproject" ON)
-		option(BUILD_GMOCK "Builds the googlemock subproject" OFF)
+		option(BUILD_GMOCK "Builds the googlemock subproject" ON)
 		add_subdirectory(extlibs/googletest)
 	else()
 		message(FATAL_ERROR
@@ -469,12 +498,14 @@ if (NETWORKIT_BUILD_TESTS)
 
 		target_link_libraries(networkit_tests
 			PRIVATE
+				gmock
 				gtest
 				networkit
-				tlx
 				OpenMP::OpenMP_CXX
+				tlx
+				dhb
 		)
-		
+
 		if(WIN32)
 			target_link_libraries(networkit_tests
 				PRIVATE
@@ -482,6 +513,11 @@ if (NETWORKIT_BUILD_TESTS)
 			)
 		endif()
 
+		if(WIN32)
+			set(NETWORKIT_CXX_FLAGS "${NETWORKIT_CXX_FLAGS} /wd4996")
+		else()
+			set(NETWORKIT_CXX_FLAGS "${NETWORKIT_CXX_FLAGS} -Wno-deprecated-declarations")
+		endif()
 		set_target_properties(networkit_tests PROPERTIES
 			CXX_STANDARD ${NETWORKIT_CXX_STANDARD}
 			COMPILE_FLAGS "${NETWORKIT_CXX_FLAGS}"
@@ -509,12 +545,15 @@ if (NETWORKIT_BUILD_TESTS)
 
 		target_link_libraries(networkit_gtest_main
 				PUBLIC
+					gmock
 					gtest
 				PRIVATE
-					tlx
 					networkit_auxiliary
 					OpenMP::OpenMP_CXX
+					tlx
+					dhb
 		)
+
 	endif()
 endif()
 
@@ -537,17 +576,23 @@ function(networkit_add_extra IS_TEST MOD NAME)
 				MESSAGE(FATAL_ERROR "Unknown NetworKit module '${MOD}'")
 			endif()
 
+			# Each test target is composed such that test file DHBGraphGTest in
+			# module graph is named: networkit_graph_DHBGraphGTest
 			set(TARGET_NAME "networkit_${MOD}_${NAME}")
 
 			add_executable(${TARGET_NAME} ${TEST_SOURCE})
 
+			# If you're missing a module for your test target, look at the
+			# CMakeLists.txt on the same level as your testfile. There you can
+			# add networkit modules to be linked against your target.
 			target_link_libraries(${TARGET_NAME}
 				PRIVATE
 					gtest networkit_gtest_main
 				PRIVATE
-					networkit_${MOD}
-					tlx
 					OpenMP::OpenMP_CXX
+					tlx
+					dhb
+					networkit_${MOD}
 					)
 			set_target_properties(${TARGET_NAME} PROPERTIES
 				CXX_STANDARD ${NETWORKIT_CXX_STANDARD}
@@ -696,7 +741,7 @@ install(DIRECTORY include/networkit
 # Install ttmath header files
 install(DIRECTORY extlibs/ttmath/ttmath
 	DESTINATION ${NETWORKIT_INSTALL_INCLUDE_DIR}
-	FILES_MATCHING PATTERN "*.hpp")
+	FILES_MATCHING PATTERN "*.h")
 
 ################################################################################
 # Prepare pkg-config file

@@ -1,4 +1,3 @@
-
 #include <networkit/GlobalState.hpp>
 
 namespace NetworKit {
@@ -37,9 +36,9 @@ bool printTime = false;
 bool printLocation = false;
 
 #ifdef NETWORKIT_QUIET_LOGGING
-::Aux::Log::LogLevel loglevel = ::Aux::Log::LogLevel::quiet;
+::Aux::Log::LogLevel loglevel = ::Aux::Log::LogLevel::QUIET;
 #else
-::Aux::Log::LogLevel loglevel = ::Aux::Log::LogLevel::info;
+::Aux::Log::LogLevel loglevel = ::Aux::Log::LogLevel::INFO;
 #endif
 
 std::ofstream logfile;
@@ -73,13 +72,13 @@ void setPrintLocation(bool b) {
 std::ofstream &getLogFile() {
     return logfile;
 }
-void setLogfile(const std::string &filename) {
+void setLogfile(std::string_view filename) {
     std::lock_guard<std::mutex> guard{logfileMutex};
     if (logfile.is_open()) {
         logfile.close();
     }
     if (filename.empty()) {
-        logfile.open(filename, std::ios_base::out | std::ios_base::app);
+        logfile.open(filename.data(), std::ios_base::out | std::ios_base::app);
         logfileIsOpen = logfile.is_open();
     } else {
         logfileIsOpen = false;

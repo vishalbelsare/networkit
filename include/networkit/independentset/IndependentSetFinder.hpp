@@ -1,4 +1,3 @@
-// no-networkit-format
 /*
  * IndependentSetFinder.hpp
  *
@@ -10,7 +9,6 @@
 #define NETWORKIT_INDEPENDENTSET_INDEPENDENT_SET_FINDER_HPP_
 
 #include <networkit/graph/Graph.hpp>
-#include <tlx/define/deprecated.hpp>
 
 namespace NetworKit {
 
@@ -21,24 +19,17 @@ namespace NetworKit {
  */
 class IndependentSetFinder {
 
-
 public:
-
     /** Default destructor */
     virtual ~IndependentSetFinder() = default;
 
     /**
-     * Returns a boolean vector of length n where vec[v] is @c true iff v is in the independent sets.
+     * Returns a boolean vector of length n where vec[v] is @c true iff v is in the independent
+     * sets.
      * @param[in]  G  The graph.
      * @return A boolean vector of length n.
      */
-    virtual std::vector<bool> run(const Graph& G) = 0;
-
-    /**
-     * Get string representation of the algorithm.
-     * @return The string representation of the algorithm.
-     */
-    virtual std::string TLX_DEPRECATED(toString() const);
+    virtual std::vector<bool> run(const Graph &G) = 0;
 
     /**
      * Checks whether a set is independent.
@@ -46,8 +37,7 @@ public:
      * @param The graph.
      * @return @c true iff @a set is independent.
      */
-    bool isIndependentSet(const std::vector<bool>& set, const Graph& G) const;
-
+    bool isIndependentSet(const std::vector<bool> &set, const Graph &G) const;
 };
 
 } /* namespace NetworKit */

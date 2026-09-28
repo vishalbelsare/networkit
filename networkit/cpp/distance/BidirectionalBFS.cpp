@@ -6,6 +6,7 @@
  */
 
 #include <limits>
+#include <queue>
 
 #include <networkit/distance/BidirectionalBFS.hpp>
 
@@ -15,7 +16,7 @@ void BidirectionalBFS::run() {
     if (G->isWeighted())
         WARN("Treating the graph as unweighted!");
 
-    stDist = 0;
+    distance = 0;
     if (source == target) {
         hasRun = true;
         return;
@@ -87,7 +88,7 @@ void BidirectionalBFS::run() {
     };
 
     do {
-        ++stDist;
+        distance += 1;
         if (sQueue.size() <= tQueue.size())
             expand(sQueue, sQueueNext, 0);
         else
@@ -96,7 +97,7 @@ void BidirectionalBFS::run() {
 
     // Balls did not meet, source cannot reach target
     if (!stop)
-        stDist = std::numeric_limits<count>::max();
+        distance = std::numeric_limits<edgeweight>::max();
     else if (storePred) {
         assert(s != none);
         assert(t != none);

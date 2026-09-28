@@ -1,4 +1,8 @@
 networkit_add_module(matching
+    BMatcher.cpp
+    BMatching.cpp
+    BSuitorMatcher.cpp
+    DynamicBSuitorMatcher.cpp
     LocalMaxMatcher.cpp
     Matcher.cpp
     Matching.cpp
@@ -7,7 +11,7 @@ networkit_add_module(matching
     )
 
 networkit_module_link_modules(matching
-    auxiliary base graph structures)
+    auxiliary graph structures)
 
 add_subdirectory(test)
 

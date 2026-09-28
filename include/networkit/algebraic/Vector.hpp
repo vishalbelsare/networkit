@@ -10,6 +10,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 
@@ -41,7 +42,7 @@ public:
      * @param transpose Indicates whether this vector is transposed (row vector) or not (column
      * vector).
      */
-    Vector(count dimension, double initialValue = 0, bool transpose = false);
+    explicit Vector(count dimension, double initialValue = 0, bool transpose = false);
 
     /**
      * Constructs the Vector with the contents of @a values.
@@ -56,21 +57,6 @@ public:
      * @param list The initializer list.
      */
     Vector(const std::initializer_list<double> &list);
-
-    /** Default copy constructor */
-    Vector(const Vector &other) = default;
-
-    /** Default move constructor */
-    Vector(Vector &&other) = default;
-
-    /** Default destructor */
-    ~Vector() = default;
-
-    /** Default copy assignment operator */
-    Vector &operator=(const Vector &other) = default;
-
-    /** Default move assignment operator */
-    Vector &operator=(Vector &&other) = default;
 
     /**
      * @return dimension of vector
@@ -93,6 +79,12 @@ public:
      * @return The Euclidean length of this vector.
      */
     double length() const;
+
+    /**
+     * Calculates and returns the squared Euclidean length of this vector
+     * @return The squared Euclidean length of this vector.
+     */
+    double length2() const;
 
     /**
      * Calculates and returns the arithmetic mean of this vector
@@ -301,18 +293,23 @@ inline Vector operator*(double scalar, const Vector &v) {
 
 template <class Matrix>
 Matrix Vector::outerProduct(const Vector &v1, const Vector &v2) {
-    std::vector<Triplet> triplets;
+    const index n = v1.getDimension();
+    const index m = v2.getDimension();
 
-    for (index i = 0; i < v1.getDimension(); ++i) {
-        for (index j = 0; j < v2.getDimension(); ++j) {
-            double result = v1[i] * v2[j];
-            if (fabs(result) >= FLOAT_EPSILON) {
+    std::vector<Triplet> triplets;
+    triplets.reserve(n * m);
+
+    for (index i = 0; i < n; ++i) {
+        const double vi = v1[i];
+        for (index j = 0; j < m; ++j) {
+            const double result = vi * v2[j];
+            if (std::fabs(result) >= FLOAT_EPSILON) {
                 triplets.push_back({i, j, result});
             }
         }
     }
 
-    return Matrix(v1.getDimension(), v2.getDimension(), triplets);
+    return Matrix(n, m, triplets);
 }
 
 template <class Matrix>
@@ -366,6 +363,18 @@ inline void Vector::parallelForElements(L handle) const {
     for (omp_index i = 0; i < static_cast<omp_index>(getDimension()); ++i) {
         handle(i, values[i]);
     }
+}
+
+// print functions for test debugging / output. Prints Vector as [0, 1, 2, 3, 4]
+inline std::ostream &operator<<(std::ostream &os, const Vector &vec) {
+    os << "[";
+    for (index i = 0; i < vec.getDimension(); i++) {
+        if (i != 0)
+            os << ", ";
+        os << vec[i];
+    }
+    os << "]";
+    return os;
 }
 
 } /* namespace NetworKit */

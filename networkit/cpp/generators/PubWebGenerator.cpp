@@ -6,6 +6,7 @@
  */
 
 #include <cmath>
+#include <queue>
 #include <set>
 
 #include <networkit/auxiliary/Random.hpp>
@@ -62,7 +63,7 @@ void PubWebGenerator::determineNeighbors(Graph &g) {
 
             if (isInRange(sqrDist)) {
                 edge e = std::make_pair(std::min(u, v), std::max(u, v));
-                pq.push(std::make_pair(-sqrDist, e));
+                pq.emplace(-sqrDist, e);
             }
         });
 
@@ -114,13 +115,13 @@ void PubWebGenerator::chooseDenseAreaSizes() {
 // compute number of nodes per cluster, each cluster has approx. same density
 void PubWebGenerator::chooseClusterSizes() {
     auto f = std::accumulate(denseAreaXYR.begin(), denseAreaXYR.end(), 0.0,
-                             [](coordinate sum, circle c) { return sum + pow(c.rad, 1.5); });
+                             [](coordinate sum, circle c) { return sum + std::pow(c.rad, 1.5); });
 
     f = (n * (numDenseAreas / (numDenseAreas + 2.0))) / f;
 
     numPerArea.reserve(numDenseAreas);
     for (auto circle : denseAreaXYR) {
-        numPerArea.emplace_back(std::round(f * pow(circle.rad, 1.5)));
+        numPerArea.emplace_back(std::round(f * std::pow(circle.rad, 1.5)));
     }
 }
 

@@ -8,6 +8,8 @@
 #ifndef NETWORKIT_DISTANCE_BIDIRECTIONAL_DIJKSTRA_HPP_
 #define NETWORKIT_DISTANCE_BIDIRECTIONAL_DIJKSTRA_HPP_
 
+#include <stack>
+
 #include <networkit/auxiliary/VectorComparator.hpp>
 #include <networkit/distance/STSP.hpp>
 
@@ -23,26 +25,25 @@ namespace NetworKit {
 class BidirectionalDijkstra final : public STSP {
 
 public:
-    // Inherit the constructors of STSP.
-    using STSP::STSP;
+    /**
+     * Creates the BidirectionalDijkstra class for a graph @a G, source node @a source, and
+     * target node @a target.
+     *
+     * @param G The graph.
+     * @param source The source node.
+     * @param target The target node.
+     * @param storePred If true, the algorithm will also store the predecessors
+     * and reconstruct a shortest path from @a source and @a target.
+     */
+    BidirectionalDijkstra(const Graph &G, node source, node target, bool storePred = true)
+        : STSP(G, source, target, storePred) {}
 
     /*
      * Runs the bidirectional Dijkstra algorithm.
      */
     void run() override;
 
-    /*
-     * Returns the distance from the source to the target node.
-     *
-     * @return edgeweight Distance from the source to the target node.
-     */
-    edgeweight getDistance() const override {
-        assureFinished();
-        return stDist;
-    }
-
 private:
-    edgeweight stDist;
     std::vector<edgeweight> dist1;
     std::vector<edgeweight> dist2;
     std::vector<node> predT;

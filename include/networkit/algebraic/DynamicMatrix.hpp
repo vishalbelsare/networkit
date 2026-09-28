@@ -30,6 +30,21 @@ protected:
 
     double zero;
 
+    // necessary for operator() const to allow for index addressing via DynamicMatrix(i,j) = value
+    class IndexProxy {
+    public:
+        IndexProxy(DynamicMatrix &mat, index i, index j) : Matrix{mat}, i{i}, j{j} {}
+
+        operator double() const { return const_cast<const DynamicMatrix &>(Matrix)(i, j); }
+
+        void operator=(double rhs) { Matrix.setValue(i, j, rhs); }
+
+    private:
+        DynamicMatrix &Matrix;
+        index i;
+        index j;
+    };
+
 public:
     /** Default constructor */
     DynamicMatrix();
@@ -69,21 +84,6 @@ public:
     DynamicMatrix(count nRows, count nCols, const std::vector<Triplet> &triplets,
                   double zero = 0.0);
 
-    /** Default copy constructor */
-    DynamicMatrix(const DynamicMatrix &other) = default;
-
-    /** Default move constructor */
-    DynamicMatrix(DynamicMatrix &&other) noexcept = default;
-
-    /** Default destructor */
-    ~DynamicMatrix() = default;
-
-    /** Default move assignment operator */
-    DynamicMatrix &operator=(DynamicMatrix &&other) noexcept = default;
-
-    /** Default copy assignment operator */
-    DynamicMatrix &operator=(const DynamicMatrix &other) = default;
-
     /**
      * Compares this matrix to @a other and returns true if the shape and zero element are the same
      * as well as all entries, otherwise returns false.
@@ -95,6 +95,29 @@ public:
         if (graphsEqual) {
             graph.forEdges([&](node u, node v, edgeweight w) {
                 if (w != other.graph.weight(u, v)) {
+                    graphsEqual = false;
+                    return;
+                }
+            });
+        }
+
+        return graphsEqual && nRows == other.nRows && nCols == other.nCols && zero == other.zero;
+    }
+
+    /**
+     * Compares this matrix to @a other and returns true if the shape and zero
+     * element are the same as well as
+     * all entries are the same (within the absolute error range of @a eps), otherwise returns
+     * false.
+     * @param other
+     * @param eps
+     */
+    bool isApprox(const DynamicMatrix &other, const double eps = 0.01) const {
+        bool graphsEqual = graph.numberOfNodes() == other.graph.numberOfNodes()
+                           && graph.numberOfEdges() == other.graph.numberOfEdges();
+        if (graphsEqual) {
+            graph.forEdges([&](node u, node v, edgeweight w) {
+                if (std::abs(w - other.graph.weight(u, v)) > eps) {
                     graphsEqual = false;
                     return;
                 }
@@ -141,6 +164,11 @@ public:
      * @return Value at matrix position (i,j).
      */
     double operator()(index i, index j) const;
+
+    /**
+     * Set the matrix at position (@a i, @a j) to @a value.
+     */
+    IndexProxy operator()(index i, index j) { return IndexProxy(*this, i, j); }
 
     /**
      * Set the matrix at position (@a i, @a j) to @a value.
@@ -323,11 +351,39 @@ public:
     void forNonZeroElementsInRow(index row, L handle) const;
 
     /**
+     * Iterate in parallel over all non-zero elements of row @a row in the matrix and call
+     * handler(index column, double value)
+     */
+    template <typename L>
+    void parallelForNonZeroElementsInRow(index i, L handle) const;
+
+    /**
      * Iterate over all elements in row @a i in the matrix and call handle(index column, double
      * value)
      */
     template <typename L>
     void forElementsInRow(index i, L handle) const;
+
+    /**
+     * Iterate in parallel over all elements (including zeros) of row @a row in the matrix and call
+     * handler(index column, double value)
+     */
+    template <typename L>
+    void parallelForElementsInRow(index row, L handle) const;
+
+    /**
+     * Iterate over all elements (including zeros) of the matrix in row order and call handler
+     * (lambda closure).
+     */
+    template <typename L>
+    void forElementsInRowOrder(L handle) const;
+
+    /**
+     * Iterate in parallel over all elements (including zeros) in row order and call handle
+     * (lambda closure) on elements of the matrix.
+     */
+    template <typename L>
+    void parallelForElementsInRowOrder(L handle) const;
 
     /**
      * Iterate over all non-zero elements of the matrix in row order and call handle(index row,
@@ -344,8 +400,6 @@ public:
     void parallelForNonZeroElementsInRowOrder(L handle) const;
 };
 
-} /* namespace NetworKit */
-
 template <typename F>
 void NetworKit::DynamicMatrix::apply(F unaryElementFunction) {
     forNonZeroElementsInRowOrder(
@@ -358,10 +412,70 @@ inline void NetworKit::DynamicMatrix::forNonZeroElementsInRow(index row, L handl
 }
 
 template <typename L>
+inline void NetworKit::DynamicMatrix::parallelForNonZeroElementsInRow(index i, L handle) const {
+    std::vector<std::pair<index, edgeweight>> elements(graph.weightNeighborRange(i).begin(),
+                                                       graph.weightNeighborRange(i).end());
+#pragma omp parallel for
+    for (omp_index j = 0; j < static_cast<omp_index>(elements.size()); ++j) {
+        handle(elements[j].first, elements[j].second);
+    }
+}
+
+template <typename L>
 inline void NetworKit::DynamicMatrix::forElementsInRow(index i, L handle) const {
     Vector rowVector = row(i);
     index j = 0;
     rowVector.forElements([&](double value) { handle(j++, value); });
+}
+
+template <typename L>
+inline void NetworKit::DynamicMatrix::parallelForElementsInRow(index i, L handle) const {
+    Vector rowVector = row(i);
+#pragma omp parallel for
+    for (omp_index j = 0; j < static_cast<omp_index>(rowVector.getDimension()); ++j) {
+        handle(j, rowVector[j]);
+    }
+}
+
+template <typename L>
+inline void NetworKit::DynamicMatrix::forElementsInRowOrder(L handle) const {
+    for (index i = 0; i < nRows; ++i) {
+        index col = 0;
+        graph.forEdgesOf(i, [&](index j, edgeweight weight) {
+            while (col < j) {
+                handle(i, col, getZero());
+                ++col;
+            }
+            handle(i, col, weight);
+            ++col;
+        });
+
+        while (col < i) {
+            handle(i, col, getZero());
+            ++col;
+        }
+    }
+}
+
+template <typename L>
+inline void NetworKit::DynamicMatrix::parallelForElementsInRowOrder(L handle) const {
+#pragma omp parallel for
+    for (omp_index i = 0; i < static_cast<omp_index>(nRows); ++i) {
+        index col = 0;
+        graph.forEdgesOf(i, [&](index j, edgeweight weight) {
+            while (col < j) {
+                handle(i, col, getZero());
+                ++col;
+            }
+            handle(i, col, weight);
+            ++col;
+        });
+
+        while (col < i) {
+            handle(i, col, getZero());
+            ++col;
+        }
+    }
 }
 
 template <typename L>
@@ -378,5 +492,20 @@ inline void NetworKit::DynamicMatrix::parallelForNonZeroElementsInRowOrder(L han
         graph.forEdgesOf(i, [&](index j, edgeweight weight) { handle(i, j, weight); });
     }
 }
+
+// print functions for test debugging / output
+inline std::ostream &operator<<(std::ostream &os, const DynamicMatrix &M) {
+    for (index row = 0; row < M.numberOfRows(); ++row) {
+        if (row != 0)
+            os << std::endl;
+        for (index col = 0; col < M.numberOfColumns(); ++col) {
+            if (col != 0)
+                os << ", ";
+            os << M(row, col);
+        }
+    }
+    return os;
+}
+} // namespace NetworKit
 
 #endif // NETWORKIT_ALGEBRAIC_DYNAMIC_MATRIX_HPP_

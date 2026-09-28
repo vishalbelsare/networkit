@@ -1,3 +1,4 @@
+#include <queue>
 
 #include "ConnectedComponentsImpl.hpp"
 

@@ -1,4 +1,3 @@
-// no-networkit-format
 /*
  * ParallelAgglomerativeClusterer.hpp
  *
@@ -17,7 +16,7 @@ namespace NetworKit {
  * @ingroup community
  * A parallel agglomerative community detection algorithm, maximizing modularity.
  */
-class ParallelAgglomerativeClusterer final: public CommunityDetectionAlgorithm {
+class ParallelAgglomerativeClusterer final : public CommunityDetectionAlgorithm {
 
 public:
     /**
@@ -25,14 +24,12 @@ public:
      *
      * @param[in] G input graph
      */
-    ParallelAgglomerativeClusterer(const Graph& G);
+    ParallelAgglomerativeClusterer(const Graph &G);
 
     /**
      * Detect communities.
      */
     void run() override;
-
-    std::string TLX_DEPRECATED(toString() const override);
 };
 
 } /* namespace NetworKit */

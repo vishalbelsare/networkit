@@ -2,8 +2,8 @@
 #define NETWORKIT_AUXILIARY_NUMBER_PARSING_HPP_
 
 #include <algorithm>
-#include <cassert>
 #include <cctype>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <tuple>

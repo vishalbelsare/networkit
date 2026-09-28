@@ -6,6 +6,7 @@
  */
 
 #include <omp.h>
+#include <queue>
 #include <utility>
 
 #include <networkit/auxiliary/Log.hpp>
@@ -39,7 +40,7 @@ count GroupClosenessGrowShrinkImpl<WeightType>::computeConsecutiveInsertions(con
     if (groupSize == 0)
         throw std::runtime_error("Error, empty group.");
 
-    Diameter diam(G, DiameterAlgo::estimatedRange, 0.1);
+    Diameter diam(G, DiameterAlgo::ESTIMATED_RANGE, 0.1);
     diam.run();
     const auto diamOverK =
         static_cast<double>(diam.getDiameter().second) / std::sqrt(static_cast<double>(groupSize));
@@ -401,8 +402,11 @@ node GroupClosenessGrowShrinkImpl<WeightType>::estimateHighestDecrement() {
             }
         });
 
-        if (distance[x] && (G->isWeighted() || (!leaf || distance[x] == WeightType{1})))
-            stack[stackSize++] = x;
+        if (distance[x] == 0)
+            continue; // Ignore vertices in the group
+
+        if (G->isWeighted() || extended || (!leaf || distance[x] == WeightType{1}))
+            stack[stackSize++] = x; // Avoid to consider DAG leaves if running non-extended GS
 
     } while (!(G->isWeighted() ? heap.empty() : q.empty()));
 
